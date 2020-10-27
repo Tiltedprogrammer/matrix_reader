@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <vector>
+#include <iostream>
 
 using namespace std;
 using namespace matrix_market;
@@ -182,7 +184,9 @@ public:
   {
     if (!meta.is_sparse ())
       throw runtime_error ("Sparse reader is not supposed for dense matrices");
-
+    if (meta.matrix_storage_scheme == matrix_class::storage_scheme::symmetric){
+      
+    }
     row_ids.reset (new unsigned int[meta.non_zero_count]);
     col_ids.reset (new unsigned int[meta.non_zero_count]);
 
@@ -206,21 +210,90 @@ public:
 
 private:
   template <typename data_t>
-  unique_ptr<sparse_matrix<data_t>> read_lines (istream &is, unique_ptr<data_t[]> &data)
+  unique_ptr<sparse_matrix<data_t>> read_lines (istream &is, std::unique_ptr<data_t[]> &data)
   {
     string line;
-    size_t nz = 0;
+    unsigned int row_id, col_id = 0;
+    data_t data_elem;
 
-    while (getline (is, line))
+    switch (meta.matrix_storage_scheme)
     {
-      istringstream iss (line);
-      iss >> row_ids[nz] >> col_ids[nz] >> data[nz];
+    case matrix_class::storage_scheme::general:{
+      
+        std::cout << "general format" << std::endl;
+      
+        size_t nz = 0;
+
+        while (getline (is, line)) {
+        
+          istringstream iss (line);
+          iss >> row_ids[nz] >> col_ids[nz] >> data[nz];
              row_ids[nz]--; col_ids[nz]--; ///< Matrix Market counts indices from 1
-      nz++;
+          nz++;
+        }
+
+        return make_unique<sparse_matrix<data_t>> (
+          meta, move (data), move (row_ids), move (col_ids));
+    }
+    case matrix_class::storage_scheme::symmetric: {
+      
+        std::cout << "symmetric format" << std::endl;
+
+        std::vector<unsigned int> row_v;
+        std::vector<unsigned int> col_v;
+        std::vector<data_t> data_v;
+
+        while (getline (is, line)) {
+        
+          istringstream iss (line);
+          iss >> row_id >> col_id >> data_elem;
+      
+          row_id--;
+          col_id--;
+        
+          if(col_id != row_id){
+          
+            row_v.push_back(row_id);
+            row_v.push_back(col_id);
+
+            col_v.push_back(col_id);
+            col_v.push_back(row_id);
+            
+            data_v.push_back(data_elem);
+            data_v.push_back(data_elem);
+
+          } else {
+            
+            row_v.push_back(row_id);
+            
+            col_v.push_back(col_id);
+            
+            data_v.push_back(data_elem);
+          }
+      }
+
+        data.reset(new data_t[data_v.size()]);
+        auto col_ptr = std::unique_ptr<unsigned int[]>(new unsigned int[col_v.size()]);
+        auto row_ptr = std::unique_ptr<unsigned int[]>(new unsigned int[row_v.size()]);
+        
+        std::copy(data_v.begin(),data_v.end(),data.get());
+        std::copy(col_v.begin(),col_v.end(),col_ptr.get());
+        std::copy(row_v.begin(),row_v.end(),row_ptr.get());
+
+        auto new_meta = matrix_class::matrix_meta(meta.rows_count,meta.cols_count,data_v.size(),meta.matrix_format,meta.matrix_data_type,meta.matrix_storage_scheme);
+
+
+        return make_unique<sparse_matrix<data_t>> (
+            new_meta, move (data), move (row_ptr), move (col_ptr));
+    }
+    default:
+      throw new std::runtime_error ("Matrix type is not supported");
+      break;
     }
 
-    return make_unique<sparse_matrix<data_t>> (
-        meta, move (data), move (row_ids), move (col_ids));
+  
+
+    
   }
 
 private:
