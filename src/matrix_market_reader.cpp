@@ -191,9 +191,11 @@ public:
     col_ids.reset (new unsigned int[meta.non_zero_count]);
 
     if (meta.matrix_data_type == matrix_class::data_type::real)
-      dbl_data.reset (new double[meta.non_zero_count]);
+      dbl_data.reset (new float[meta.non_zero_count]);
     else if (meta.matrix_data_type == matrix_class::data_type::integer)
       int_data.reset (new int[meta.non_zero_count]);
+    else if (meta.matrix_data_type == matrix_class::data_type::pattern)
+      dbl_data.reset (new float[meta.non_zero_count]);
     else
       throw std::runtime_error ("Unsupported matrix data type");
   }
@@ -227,9 +229,19 @@ private:
         while (getline (is, line)) {
         
           istringstream iss (line);
-          iss >> row_ids[nz] >> col_ids[nz] >> data[nz];
+          if(meta.matrix_data_type == matrix_class::data_type::pattern) {
+            
+            iss >> row_ids[nz] >> col_ids[nz];
+            data[nz] = 1;
+            row_ids[nz]--; col_ids[nz]--; ///< Matrix Market counts indices from 1
+            nz++;
+          } else {
+            
+            iss >> row_ids[nz] >> col_ids[nz] >> data[nz];
              row_ids[nz]--; col_ids[nz]--; ///< Matrix Market counts indices from 1
-          nz++;
+            nz++;
+          }
+          
         }
 
         return make_unique<sparse_matrix<data_t>> (
@@ -246,8 +258,15 @@ private:
         while (getline (is, line)) {
         
           istringstream iss (line);
-          iss >> row_id >> col_id >> data_elem;
-      
+          if(meta.matrix_data_type == matrix_class::data_type::pattern) {
+            
+            iss >> row_id >> col_id;
+            data_elem = 1;  
+          } else {
+            
+            iss >> row_id >> col_id >> data_elem;
+          }
+          
           row_id--;
           col_id--;
         
@@ -298,7 +317,7 @@ private:
 
 private:
   unique_ptr<int[]> int_data;
-  unique_ptr<double[]> dbl_data;
+  unique_ptr<float[]> dbl_data;
 
   unique_ptr<unsigned int[]> row_ids;
   unique_ptr<unsigned int[]> col_ids;
